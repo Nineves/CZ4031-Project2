@@ -23,6 +23,9 @@ def query_comparison(query1, query2, keyword = None):
 def plan_comparison(plan1, plan2, query1, query2):
     explanation_list = []
 
+    plan1_relations = plan1.get_relation_names()
+    plan2_relations = plan2.get_relation_names()
+
     plan1_nodes = plan1.all_nodes
     plan2_nodes = plan2.all_nodes
 
@@ -74,15 +77,47 @@ def plan_comparison(plan1, plan2, query1, query2):
     for i in range(len(join_dict['common']['P1'])):
         n1 = join_dict['common']['P1'][i]
         n2 = join_dict['common']['P2'][i]
+        relations_1 = n1.get_relation_names()
+        relations_2 = n2.get_relation_names()
+        r1 = ', '.join(relations_1)
+        r2 = ', '.join(relations_2)
+
 
         if n1.node_type != n2.node_type:
             exp = ""
             exp += explain_join_diff(n1, n2, query1, query2)
             explanation_list.append(exp)
-    ############### 还没写完
-
-
+        elif n1.node_type == n2.node_type and relations_1 != relations_2:
+            reason_new = query_comparison(query1, query2, 'WHERE')
+            exp = "The order of join operations on tables has changed from {} to {}.".format(r1, r2)
+            exp += "The reason for this change is likely that {}".format(reason_new)
     
+    for item in join_dict['only_1']:
+        isDiffTable = False
+        involved_relations = item.get_relation_names()
+        for r in involved_relations:
+            if r not in plan2_relations:
+                isDiffTable = True
+                exp = "The join operation which involves relation {} only appears in Plan1 as table {} is not used in Query2. ".format(involved_relations,r)
+                exp += "The change is indicated in FROM clause: {}".format(query_comparison(query1, query2, 'FROM'))
+        if isDiffTable == False:
+            reason_new = query_comparison(query1, query2, 'WHERE')
+            exp = "The join operation which involves relation {} only appears in Plan1".format(involved_relations)
+            exp += "The reason for this change is likely that {}".format(reason_new)
+            exp += "One or some of the relations in [{}] might be joined with other relations first as it is more efficient.".format(involved_relations)
+
+    for item in join_dict['only_2']:
+        isDiffTable = False
+        involved_relations = item.get_relation_names()
+        for r in involved_relations:
+            if r not in plan1_relations:
+                exp = "The join operation which involves relation {} only appears in Plan2 as table {} is not used in Query1. ".format(r,r)
+                exp += "The change is indicated in FROM clause: {}".format(query_comparison(query1, query2, 'FROM'))  
+        if isDiffTable == False:
+            reason_new = query_comparison(query1, query2, 'WHERE')
+            exp = "The join operation which involves relation {} only appears in Plan1".format(involved_relations)
+            exp += "The reason for this change is likely that {}".format(reason_new)
+            exp += "One or some of the relations in [{}] might be joined with other relations first as it is more efficient.".format(involved_relations)  
     return scan_dict, join_dict
 
 def get_nodes_diff(nodes1, nodes2):
@@ -145,39 +180,44 @@ def explain_scan_diff(node1, node2, query1, query2):
     elif node1.node_type == "Index Scan" and node2.node_type == "Seq Scan":
         explanation += "Index scan on table {} has evolved to Sequential scan.".format(node1.relation_name)
         if node1.table_filter != node2.index_cond:
-            explanation += "The reason for the change can be that selection condition has changed from {} to {}.".format(node1.index_cond, node2.table_filter)   
+            explanation += "The reason for the change can be that selection condition has changed from {} to {}.".format(node1.index_cond, node2.table_filter)  
     
     return explanation
 
 def explain_join_diff(node1, node2, query1, query2):
     explanation = ""
-    reason = ""
 
     relations_1 = node1.get_relation_names()
     relations_2 = node2.get_relation_names()
     r1 = ', '.join(relations_1)
     r2 = ', '.join(relations_2)
 
-    isTableDiff = False
-
-
-    explanation += "The join operation has evolved from {} on relation {} to {} on relation {} .".format(node1.node_type, r1, node2.node_type, r2)
+    explanation += "Join operation which involves tables {} has evloved from {} to {}. ".format(r1, node1.node_type, node2.node_type)
     if relations_1 != relations_2:
-        if len(relations_1) != len(relations_2):
-            isTableDiff = True
-            reason = "the number of tables involved in P1 and the number of tables involved in P2 are different."
-        else:
-            if set(relations_1) != set(relations_2):
-                isTableDiff = True
-                reason = "the tables involved in P1 and the tables involved in P2 are different."
-            elif set(relations_1) == set(relations_2):
-                reason = "the sequence of tables involved in P1 and the sequence of tables involved in P2 are different."
-        
-    if isTableDiff == False:
-        reason_new = query_comparison(query1, query2, 'WHERE')
-        reason += "and " + reason_new
+        explanation += "And the sequence of join operations on tables has also changed from {} to {}.".format(r1, r2)
 
-    explanation += "The reason for this change is probably that " + reason
+    reason_new = query_comparison(query1, query2, 'WHERE')
+    explanation += "The reason for this change is likely that {}".format(reason_new)
+    return explanation
+
+
+    # explanation += "The join operation has evolved from {} on relation {} to {} on relation {} .".format(node1.node_type, r1, node2.node_type, r2)
+    # if relations_1 != relations_2:
+    #     if len(relations_1) != len(relations_2):
+    #         isTableDiff = True
+    #         reason = "the number of tables involved in P1 and the number of tables involved in P2 are different."
+    #     else:
+    #         if set(relations_1) != set(relations_2):
+    #             isTableDiff = True
+    #             reason = "the tables involved in P1 and the tables involved in P2 are different."
+    #         elif set(relations_1) == set(relations_2):
+    #             reason = "the sequence of tables involved in P1 and the sequence of tables involved in P2 are different."
+        
+    # if isTableDiff == False:
+    #     reason_new = query_comparison(query1, query2, 'WHERE')
+    #     reason += "and " + reason_new
+
+    # explanation += "The reason for this change is probably that " + reason
 
 
 def preprocess_Tokens(tokens):

@@ -1,4 +1,5 @@
 import queue
+import json
 
 
 class Node(object):
@@ -43,17 +44,26 @@ class Node(object):
         return result
 
     def get_relation_names(self):
+        print("Name:{}".format(self.node_type))
         result = []
         for child in self.child_nodes:
+            #print("Num of children:{}".format(len(self.child_nodes)))
+            #print("Child Name:{} of {}".format(child.node_type, self.node_type))
+            # if 'Scan' in child.node_type:
+            #     print("Scan on relation:", child.relation_name) 
             if child.relation_name != None:
                 result.append(child.relation_name)
             else: 
                 result += child.get_relation_names()
         return result  
     
-
-    
-
+    def get_node_info(self):
+        print("Node type:{}".format(self.node_type))
+        print("Involved relations:{}".format(self.get_relation_names()))
+        print("Child nodes:", end=" ")
+        for child in self.child_nodes:
+            print(child.node_type, end=" ")
+                
 
 class QEP(object):
 
@@ -92,16 +102,16 @@ class QEP(object):
         """
         Used for parsing query plan to query plan tree
         """
-        plan_to_parse = json_file[0]['Plan']
+        plan_to_parse = json_file['Plan']
         plans = queue.Queue()
         nodes = queue.Queue()
         parent_node = None
 
         plans.put(plan_to_parse)
 
-        while plans.not_empty():
+        while not plans.empty():
             cur_plan = plans.get()
-            if parent_node is not None:
+            if not nodes.empty():
                 parent_node = nodes.get()
 
             #Initialize current node
@@ -162,18 +172,22 @@ class QEP(object):
             #         current_node.set_node_name(alias)
             #     else:
             #         current_node.set_node_name(relation_name)
-        if 'Plans' in cur_plan:
-            child_plans = cur_plan['Plans']
-            for child_plan in child_plans:
-                plans.put(child_plan)
-        
-        nodes.put(current_node)
-        if parent_node is not None:
-            parent_node.add_child(current_node)
-        else:
-            head = current_node
-        
-        #Obtained a tree of nodes
+            if 'Plans' in cur_plan:
+                child_plans = cur_plan['Plans']
+                for child_plan in child_plans:
+                    plans.put(child_plan)
+                    nodes.put(current_node)
+            if parent_node is not None:
+                parent_node.add_child(current_node)
+            else:
+                head = current_node
+            
+            #Obtained a tree of nodes
 
         return head
 
+if __name__ == "__main__":
+    with open('plan 1.1.json') as json_file:
+        data = json.load(json_file)
+    head_node = QEP.parse_json_file(data)
+    print(head_node.get_node_info())
