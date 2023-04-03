@@ -3,9 +3,10 @@ import json
 
 
 class Node(object):
-    def __init__(self, node_type, relation_name, schema, alias, group_key, sort_key, 
+    def __init__(self, node_number, node_type, relation_name, schema, alias, group_key, sort_key, 
                  join_type, index_name, hash_cond, table_filter, index_cond, merge_cond, recheck_cond, join_filter, 
                  subplan_name, actual_rows, actual_time,description):
+        self.node_number = node_number #unique index number for each node
         self.node_type = node_type
         self.parent_node = None
         self.child_nodes = []
@@ -58,6 +59,7 @@ class Node(object):
         return result  
     
     def get_node_info(self):
+        print("Node index:{}".format(str(self.node_number)))
         print("Node type:{}".format(self.node_type))
         print("Involved relations:{}".format(self.get_relation_names()))
         print("Child nodes:", end=" ")
@@ -95,6 +97,15 @@ class QEP(object):
         return nodes
 
          
+    def get_node(self, node_index):
+        nodes = queue.Queue()
+        nodes.put(self.head_node)
+        while not nodes.empty():
+            cur_node = nodes.get()
+            if cur_node.node_number == node_index:
+                return cur_node
+            for child in cur_node.child_nodes:
+                nodes.put(child)
         
 
     @staticmethod
@@ -106,6 +117,7 @@ class QEP(object):
         plans = queue.Queue()
         nodes = queue.Queue()
         parent_node = None
+        node_index = 0
 
         plans.put(plan_to_parse)
 
@@ -113,6 +125,7 @@ class QEP(object):
             cur_plan = plans.get()
             if not nodes.empty():
                 parent_node = nodes.get()
+            node_index += 1
 
             #Initialize current node
             relation_name = schema = alias = group_key = sort_key = join_type = index_name = hash_cond = table_filter \
@@ -154,7 +167,7 @@ class QEP(object):
                 else:
                     subplan_name = cur_plan['Subplan Name']
 
-            current_node = Node(cur_plan['Node Type'], relation_name, schema, alias, group_key, sort_key, join_type,
+            current_node = Node(node_index, cur_plan['Node Type'], relation_name, schema, alias, group_key, sort_key, join_type,
                                 index_name, hash_cond, table_filter, index_cond, merge_cond, recheck_cond, join_filter,
                                 subplan_name, actual_rows, actual_time, description)
 
@@ -190,4 +203,5 @@ if __name__ == "__main__":
     with open('plan 1.1.json') as json_file:
         data = json.load(json_file)
     head_node = QEP.parse_json_file(data)
-    print(head_node.get_node_info())
+    new_QEP = QEP(head_node)
+    print(new_QEP.get_node(3).get_node_info())
