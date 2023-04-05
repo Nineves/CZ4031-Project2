@@ -16,7 +16,21 @@ if __name__ == "__main__":
     with open('plan 2.json', 'w',newline='\r\n') as f:
         json.dump(result3, f,indent=2)
 
-    
+    result4 = connection.execute("explain (analyze, costs, verbose, buffers, format json) select orders.o_orderkey, customer.c_nationkey, supplier.s_nationkey from orders, customer, supplier, lineitem where customer.c_custkey = orders.o_custkey and orders.o_orderkey = lineitem.l_orderkey and lineitem.l_suppkey = supplier.s_suppkey and supplier.s_nationkey = customer.c_nationkey")[0][0][0]
+    with open('plan 3.1.json', 'w',newline='\r\n') as f:
+        json.dump(result4, f,indent=2)
+
+    result5 = connection.execute("explain (analyze, costs, verbose, buffers, format json) select orders.o_orderkey, customer.c_nationkey, supplier.s_nationkey from orders, customer, supplier, lineitem where customer.c_custkey = orders.o_custkey and orders.o_orderkey = lineitem.l_orderkey and lineitem.l_suppkey = supplier.s_suppkey and supplier.s_nationkey != customer.c_nationkey")[0][0][0]
+    with open('plan 3.2.json', 'w',newline='\r\n') as f:
+        json.dump(result5, f,indent=2)
+
+    result6 = connection.execute("explain (analyze, costs, verbose, buffers, format json) select supplier.s_name, supplier.s_acctbal from nation, supplier, lineitem where nation.n_name = 'JAPAN' and supplier.s_nationkey = nation.n_nationkey and lineitem.l_suppkey = supplier.s_suppkey and lineitem.l_quantity = 30")[0][0][0]
+    with open('plan 4.1.json', 'w',newline='\r\n') as f:
+        json.dump(result6, f,indent=2)
+
+    result7 = connection.execute("explain (analyze, costs, verbose, buffers, format json) select supplier.s_name, supplier.s_acctbal from nation, supplier, lineitem where nation.n_name != 'JAPAN' and supplier.s_nationkey = nation.n_nationkey and lineitem.l_suppkey = supplier.s_suppkey and lineitem.l_quantity = 30")[0][0][0]
+    with open('plan 4.2.json', 'w',newline='\r\n') as f:
+        json.dump(result7, f,indent=2)
     
     # for key in plan.keys():
     #     print(key, ":", plan[key])
