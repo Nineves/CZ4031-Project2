@@ -20,6 +20,10 @@ if __name__ == "__main__":
     with open('plan 3.1.json', 'w',newline='\r\n') as f:
         json.dump(result4, f,indent=2)
 
+    result44 = connection.execute("explain (analyze, costs, verbose, buffers, format json) select orders.o_orderkey, customer.c_nationkey, supplier.s_nationkey from orders, customer, supplier, lineitem where customer.c_custkey = orders.o_custkey and orders.o_orderkey = lineitem.l_orderkey and lineitem.l_suppkey = supplier.s_suppkey and supplier.s_nationkey = customer.c_nationkey and orders.o_orderkey < 100")[0][0][0]
+    with open('plan 3.3.json', 'w',newline='\r\n') as f:
+        json.dump(result44, f,indent=2)
+
     result5 = connection.execute("explain (analyze, costs, verbose, buffers, format json) select orders.o_orderkey, customer.c_nationkey, supplier.s_nationkey from orders, customer, supplier, lineitem where customer.c_custkey = orders.o_custkey and orders.o_orderkey = lineitem.l_orderkey and lineitem.l_suppkey = supplier.s_suppkey and supplier.s_nationkey != customer.c_nationkey")[0][0][0]
     with open('plan 3.2.json', 'w',newline='\r\n') as f:
         json.dump(result5, f,indent=2)
