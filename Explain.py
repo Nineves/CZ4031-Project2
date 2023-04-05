@@ -1,5 +1,6 @@
 import sqlparse
 import deepdiff
+import json
 from Parsers import QEP
 from database_connection import DBConnection
 
@@ -292,37 +293,52 @@ def explain_join_diff(node1, node2, query1, query2):
     return explanation
 
 
-
 def preprocess_Tokens(tokens):
     for i, token in enumerate(tokens):
         if token.is_whitespace:
             tokens.pop(i)
     return tokens
 
-
-if __name__ == "__main__":
-    # FOR TESTING ONLY
-    # Need to parse subquery (if there's any)
-    connection = DBConnection()
+def doExperiment1(connection):
     FORE_WORD = "explain (analyze, costs, verbose, buffers, format json) "
     query1 = 'select customer.c_custkey, customer.c_name, nation.n_name from customer, nation where customer.c_nationkey = nation.n_nationkey and customer.c_acctbal >= 1000 and nation.n_nationkey >= 10 order by customer.c_custkey desc;'
     query2 = 'select customer.c_custkey, customer.c_name, nation.n_name from customer, nation where customer.c_nationkey = nation.n_nationkey and customer.c_custkey >= 75000 and nation.n_nationkey >= 10 order by nation.n_name;'
-    #query3 = "select o_orderpriority,count(*) as order_count from orders where o_totalprice > 100 and exists (select * from lineitem where l_orderkey = o_orderkey and l_extendedprice > 100) group by o_orderpriority order by o_orderpriority;"
-
-
-    # ddiff = deepdiff.DeepDiff(parse_SQL(query1),parse_SQL(query2))["values_changed"]
-    # print(ddiff)
-    # exit()
 
     plan1 = connection.execute(FORE_WORD + query1)[0][0][0]
     plan2 = connection.execute(FORE_WORD + query2)[0][0][0]
 
+    qep1 = QEP(QEP.parse_json_file(plan1))
+    qep2 = QEP(QEP.parse_json_file(plan2))
+
+    result = plan_comparison(qep1, qep2, query1, query2)
+    dicts = {str(key[0])+","+str(key[1]): value for key, value in result.items()}
+    with open('Explanation1.json', 'w',newline='\r\n') as f:
+        json.dump(dicts, f, indent=2)
+
+
+def doExperiment2(connection):
+    FORE_WORD = "explain (analyze, costs, verbose, buffers, format json) "
+    query1 = 'select orders.o_orderkey, orders.o_orderdate, customer.c_custkey, customer.c_name from customer, orders where customer.c_custkey = orders.o_custkey and orders.o_orderkey >= 40000 and customer.c_custkey >= 50000;'
+    query2 = "select orders.o_orderkey, orders.o_orderdate, customer.c_custkey, customer.c_name from customer, orders where customer.c_custkey = orders.o_custkey and orders.o_orderdate >= '1996-01-01' and customer.c_nationkey >= 10;"
+
+    plan1 = connection.execute(FORE_WORD + query1)[0][0][0]
+    plan2 = connection.execute(FORE_WORD + query2)[0][0][0]
+    print(plan1)
+    print("++++++++++++++++++++++++++++++++")
     print(plan2)
 
     qep1 = QEP(QEP.parse_json_file(plan1))
     qep2 = QEP(QEP.parse_json_file(plan2))
 
-    
-
     result = plan_comparison(qep1, qep2, query1, query2)
-    print(result)
+    dicts = {str(key[0])+","+str(key[1]): value for key, value in result.items()}
+    with open('Explanation2.json', 'w',newline='\r\n') as f:
+        json.dump(dicts, f, indent=2)
+
+if __name__ == "__main__":
+    # FOR TESTING ONLY
+    # Need to parse subquery (if there's any)
+    connection = DBConnection()
+    doExperiment1(connection)
+    doExperiment2(connection)
+    

@@ -1,0 +1,5 @@
+{
+  "4,3": "Sequential scan on table customer has evolved to Index scan.The reason for the change can be that selection condition has changed from (customer.c_acctbal >= '1000'::numeric) to (customer.c_custkey >= 75000).",
+  "2,0": "The sort operation with sort key ['customer.c_custkey DESC'] only exists in Plan1.The reason for it is that Sort keys of P1:[customer.c_custkey DESC] -> Sort keys of P2:[nation.n_name]",
+  "0,1": "The sort operation with sort key ['nation.n_name'] only exists in Plan2.The reason for it is that Sort keys of P1:[customer.c_custkey DESC] -> Sort keys of P2:[nation.n_name]"
+}
