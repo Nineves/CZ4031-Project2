@@ -11,6 +11,8 @@ def query_comparison(query1, query2, keyword = None):
     #keyword = "WHERE"
     ddiff = deepdiff.DeepDiff(query_dict1, query_dict2)["values_changed"]
     new_key = "root['{}']".format(keyword)
+    if new_key not in ddiff:
+        return comparison_result
     new_value = ddiff[new_key]['new_value']
     old_value = ddiff[new_key]['old_value']
     if keyword == "WHERE":
@@ -54,6 +56,8 @@ def plan_comparison(plan1, plan2, query1, query2):
         if n1.node_type != n2.node_type:
             exp = ""
             exp += explain_scan_diff(n1, n2, query1, query2)
+            reason_new = query_comparison(query1, query2, 'WHERE')
+            exp += "The reason for this change is likely that {}".format(reason_new)
             explanation_dict[(n1.node_number,n2.node_number)] = exp
     
     P1_only = set()
@@ -79,17 +83,20 @@ def plan_comparison(plan1, plan2, query1, query2):
         n2 = join_dict['common']['P2'][i]
         relations_1 = n1.get_relation_names()
         relations_2 = n2.get_relation_names()
-        r1 = ', '.join(relations_1)
-        r2 = ', '.join(relations_2)
+        r1 = ' x '.join(relations_1)
+        r2 = ' x '.join(relations_2)
 
 
         if n1.node_type != n2.node_type:
             exp = ""
             exp += explain_join_diff(n1, n2, query1, query2)
+            reason_new = query_comparison(query1, query2, 'WHERE')
+            exp += "The reason for this change is likely that {}".format(reason_new)
             explanation_dict[(n1.node_number, n2.node_number)] = exp
         elif n1.node_type == n2.node_type and relations_1 != relations_2:
             reason_new = query_comparison(query1, query2, 'WHERE')
-            exp = "The order of join operations on tables has changed from {} to {}.".format(r1, r2)
+            
+            exp = "The order of join operations on tables in subtrees of the node has changed from {} to {}.".format(r1, r2)
             exp += "The reason for this change is likely that {}".format(reason_new)
             explanation_dict[(n1.node_number, n2.node_number)] = exp
     
@@ -99,7 +106,7 @@ def plan_comparison(plan1, plan2, query1, query2):
         for r in involved_relations:
             if r not in plan2_relations:
                 isDiffTable = True
-                exp = "The join operation which involves relation {} only appears in Plan1 as table {} is not used in Query2. ".format(involved_relations,r)
+                exp = "The join operation which involves relations {} only appears in Plan1 as table {} is not used in Query2. ".format(involved_relations,r)
                 exp += "The change is indicated in FROM clause: {}".format(query_comparison(query1, query2, 'FROM'))
                 explanation_dict[(item.node_number, 0)] = exp
         if isDiffTable == False:
@@ -119,7 +126,7 @@ def plan_comparison(plan1, plan2, query1, query2):
                 explanation_dict[(0, item.node_number)] = exp  
         if isDiffTable == False:
             reason_new = query_comparison(query1, query2, 'WHERE')
-            exp = "The join operation which involves relation {} only appears in Plan1".format(involved_relations)
+            exp = "The join operation which involves relation {} only appears in Plan1.".format(involved_relations)
             exp += "The reason for this change is likely that {}".format(reason_new)
             exp += "One or some of the relations in [{}] might be joined with other relations first as it is more efficient.".format(involved_relations)  
             explanation_dict[(0, item.node_number)] = exp  
@@ -309,6 +316,10 @@ def doExperiment1(connection):
 
     qep1 = QEP(QEP.parse_json_file(plan1))
     qep2 = QEP(QEP.parse_json_file(plan2))
+    with open('Exp_qep1_1.json', 'w',newline='\r\n') as f:
+        json.dump(plan1, f, indent=2)
+    with open('Exp_qep1_2.json', 'w',newline='\r\n') as f:
+        json.dump(plan2, f, indent=2)
 
     result = plan_comparison(qep1, qep2, query1, query2)
     dicts = {str(key[0])+","+str(key[1]): value for key, value in result.items()}
@@ -318,27 +329,49 @@ def doExperiment1(connection):
 
 def doExperiment2(connection):
     FORE_WORD = "explain (analyze, costs, verbose, buffers, format json) "
-    query1 = 'select orders.o_orderkey, orders.o_orderdate, customer.c_custkey, customer.c_name from customer, orders where customer.c_custkey = orders.o_custkey and orders.o_orderkey >= 40000 and customer.c_custkey >= 50000;'
-    query2 = "select orders.o_orderkey, orders.o_orderdate, customer.c_custkey, customer.c_name from customer, orders where customer.c_custkey = orders.o_custkey and orders.o_orderdate >= '1996-01-01' and customer.c_nationkey >= 10;"
+    query1 = "select supplier.s_name, supplier.s_acctbal from nation, supplier, lineitem where nation.n_name = 'JAPAN' and supplier.s_nationkey = nation.n_nationkey and lineitem.l_suppkey = supplier.s_suppkey and lineitem.l_quantity = 30;"
+    query2 = "select supplier.s_name, supplier.s_acctbal from nation, supplier, lineitem where nation.n_name != 'JAPAN' and supplier.s_nationkey = nation.n_nationkey and lineitem.l_suppkey = supplier.s_suppkey and lineitem.l_quantity = 30;"
 
     plan1 = connection.execute(FORE_WORD + query1)[0][0][0]
     plan2 = connection.execute(FORE_WORD + query2)[0][0][0]
-    print(plan1)
-    print("++++++++++++++++++++++++++++++++")
-    print(plan2)
 
     qep1 = QEP(QEP.parse_json_file(plan1))
     qep2 = QEP(QEP.parse_json_file(plan2))
+    with open('Exp_qep2_1.json', 'w',newline='\r\n') as f:
+        json.dump(plan1, f, indent=2)
+    with open('Exp_qep2_2.json', 'w',newline='\r\n') as f:
+        json.dump(plan2, f, indent=2)
 
     result = plan_comparison(qep1, qep2, query1, query2)
     dicts = {str(key[0])+","+str(key[1]): value for key, value in result.items()}
     with open('Explanation2.json', 'w',newline='\r\n') as f:
         json.dump(dicts, f, indent=2)
 
+def doExperiment3(connection):
+    FORE_WORD = "explain (analyze, costs, verbose, buffers, format json) "
+    query1 = "select * from (SELECT supplier.s_nationkey,supplier.s_suppkey FROM supplier WHERE 20=s_suppkey) AS a join (SELECT nation.n_nationkey, nation.n_regionkey FROM nation) As b on a.s_nationkey = b.n_nationkey"
+    query2 = "select * from (SELECT supplier.s_nationkey,supplier.s_suppkey FROM supplier WHERE 200<=s_suppkey) AS a join (SELECT nation.n_nationkey, nation.n_regionkey FROM nation) As b on a.s_nationkey = b.n_nationkey"
+
+    plan1 = connection.execute(FORE_WORD + query1)[0][0][0]
+    plan2 = connection.execute(FORE_WORD + query2)[0][0][0]
+
+    qep1 = QEP(QEP.parse_json_file(plan1))
+    qep2 = QEP(QEP.parse_json_file(plan2))
+    with open('Exp_qep3_1.json', 'w',newline='\r\n') as f:
+        json.dump(plan1, f, indent=2)
+    with open('Exp_qep3_2.json', 'w',newline='\r\n') as f:
+        json.dump(plan2, f, indent=2)
+
+    result = plan_comparison(qep1, qep2, query1, query2)
+    dicts = {str(key[0])+","+str(key[1]): value for key, value in result.items()}
+    with open('Explanation3.json', 'w',newline='\r\n') as f:
+        json.dump(dicts, f, indent=2)
+
 if __name__ == "__main__":
     # FOR TESTING ONLY
     # Need to parse subquery (if there's any)
     connection = DBConnection()
-    doExperiment1(connection)
-    doExperiment2(connection)
+    #doExperiment1(connection)
+    #doExperiment2(connection)
+    doExperiment3(connection)
     
