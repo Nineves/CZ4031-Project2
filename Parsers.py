@@ -1,5 +1,7 @@
 import queue
 import json
+from igraph import Graph
+import plotly.graph_objects as go
 
 
 class Node(object):
@@ -26,6 +28,7 @@ class Node(object):
         self.merge_cond = merge_cond    #For merge join
         self.recheck_cond = recheck_cond    #For bitmap scan
         self.join_filter = join_filter
+        self.step = None
         
         """
         E.g.
@@ -84,6 +87,7 @@ class QEP(object):
         self.scan_nodes = []
         self.join_nodes = []
         self.all_nodes = self.get_all_nodes()
+        self.num_of_nodes = len(self.all_nodes)
     
 
     
@@ -118,6 +122,133 @@ class QEP(object):
                 return cur_node
             for child in cur_node.child_nodes:
                 nodes.put(child)
+
+    def plot(self, diff_node_indexes = []):
+        '''
+        Pass in the indexes of evolved nodes, which will be marked as yellow in the visualization.
+        '''
+        graph = [[0 for i in range(self.num_of_nodes)] for j in range(self.num_of_nodes)]
+        for node in self.all_nodes:
+            for child in node.child_nodes:
+                graph[node.node_number - 1][child.node_number - 1] = 1
+        
+        G = Graph.Adjacency(graph)
+        layout = G.layout('tree')
+
+        position = {k: layout[k] for k in range(self.num_of_nodes)}
+        Ys = [layout[k][1] for k in range(self.num_of_nodes)]
+        maxY = max(Ys)
+        edges = [e.tuple for e in G.es]
+        Xn = [position[k][0] for k in range(self.num_of_nodes)]
+        Yn = [2 * maxY - position[k][1] for k in range(self.num_of_nodes)]
+        Xe = []
+        Ye = []
+        for edge in edges:
+            Xe += [position[edge[0]][0], position[edge[1]][0], None]
+            Ye += [2 * maxY - position[edge[0]][1],
+                   2 * maxY - position[edge[1]][1], None]
+        
+        sorted_nodes = sorted(self.all_nodes, key = lambda x:x.node_number)
+        labels_name = []
+        hovered_text = []
+        index = []
+        self.generate_NLP_description()
+        for i in range(len(sorted_nodes)):
+            index.append(str(sorted_nodes[i].node_number))
+            labels_name.append(str(sorted_nodes[i].node_number) + " " + sorted_nodes[i].node_type)
+            if sorted_nodes[i].step is not None:
+                hovered_text.append(sorted_nodes[i].step)
+            else:
+                hovered_text.append("")
+        
+        sorted_diff_nodes = sorted(diff_node_indexes)
+        Xdiff = []
+        Ydiff = []
+        hovered_diff_text = []
+        if len(sorted_diff_nodes) != 0:
+            for i in range(len(sorted_diff_nodes)):
+                Xdiff.append(position[sorted_diff_nodes[i]-1][0])
+                Ydiff.append(2 * maxY - position[sorted_diff_nodes[i]-1][1])
+                hovered_diff_text.append(self.get_node(sorted_diff_nodes[i]).step)
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=Xe,
+                                 y=Ye,
+                                 mode='lines',
+                                 line=dict(color='rgb(210,210,210)', width=2),
+                                 hoverinfo='none'
+                                 ))
+        fig.add_trace(go.Scatter(x=Xn,
+                                 y=Yn,
+                                 mode='markers + text',
+                                 name='bla',
+                                 marker=dict(symbol='diamond-wide',
+                                             size=70,
+                                             color='#9b59b6',  # '#DB4551',
+                                             line=dict(
+                                                 color='rgb(50,50,50)', width=2)
+                                             ),
+                                 #text=labels_name,
+                                 hoverinfo='text',
+                                 hovertext=hovered_text,
+                                 opacity=1,
+                                 textposition="bottom center"
+                                 ))
+        fig.add_trace(go.Scatter(x=Xdiff,
+                                 y=Ydiff,
+                                 mode='markers + text',
+                                 name='bla',
+                                 marker=dict(symbol='diamond-wide',
+                                             size=70,
+                                             color='#f1c40f',  # '#DB4551',
+                                             line=dict(
+                                                 color='rgb(50,50,50)', width=2)
+                                             ),
+                                 #text=labels_name,
+                                 hoverinfo='text',
+                                 hovertext=hovered_diff_text,
+                                 opacity=0.8,
+                                 textposition="bottom center"
+                                 ))
+        fig.update_traces(textposition='top center')
+        axis = dict(showline=False,  # hide axis line, grid, ticklabels and  title
+                    zeroline=False,
+                    showgrid=False,
+                    showticklabels=True,
+                    )
+
+        fig.update_layout(title='Tree View of Query Plan',
+                          annotations=self.make_annotations(
+                              position, self.all_nodes, maxY),
+                          font_size=12,
+                          showlegend=False,
+                          xaxis=axis,
+                          yaxis=axis,
+                          margin=dict(l=20, r=20, b=20, t=100),
+                          hovermode='closest',
+                          plot_bgcolor='rgb(248,248,248)'
+                          )
+        fig.show()
+
+    
+    def make_annotations(self, position, nodes, M, font_size=10, font_color='rgb(250,250,250)'):
+        ''' Include the annotations of that particular step of qep in node '''
+        L = len(position)
+        sorted_nodes = sorted(nodes, key = lambda x:x.node_number)
+        if len(nodes) != L:
+            raise ValueError('The lists pos and text must have the same len')
+        annotations = []
+        for k in range(L):
+            annotations.append(
+                dict(
+                    # or replace labels with a different list for the text within the circle
+                    text=str(k+1) + " " + sorted_nodes[k].node_type,
+                    x=position[k][0], y=2 * M - position[k][1],
+                    xref='x1', yref='y1',
+                    font=dict(color=font_color, size=font_size),
+                    showarrow=False)
+            )
+        return annotations
     
     def generate_NLP_description(self):
         steps = {}
@@ -213,6 +344,7 @@ class QEP(object):
                 if cur_node.join_filter:
                     NLP_description += ", join filtering on " +  cur_node.join_filter
                 steps[str(counter)] = NLP_description
+                cur_node.step = NLP_description
                 counter += 1
                 stack.pop(0)
             else:
@@ -245,8 +377,8 @@ class QEP(object):
             = index_cond = merge_cond = recheck_cond = join_filter = subplan_name = actual_rows = actual_time = description = total_cost = None
             if 'Relation Name' in cur_plan:
                 relation_name = cur_plan['Relation Name']
-            if 'Total cost' in cur_plan:
-                total_cost = cur_plan['Total cost']
+            if 'Total Cost' in cur_plan:
+                total_cost = cur_plan['Total Cost']
             if 'Schema' in cur_plan:
                 schema = cur_plan['Schema']
             if 'Alias' in cur_plan:
@@ -286,20 +418,9 @@ class QEP(object):
                                 index_name, hash_cond, table_filter, index_cond, merge_cond, recheck_cond, join_filter,
                                 subplan_name, actual_rows, actual_time, description)
 
-            # The row number is limited to certain integer
-            # if "Limit" == current_node.node_type:
-            #     current_node.plan_rows = cur_plan['Plan Rows']
+            if "Limit" == current_node.node_type:
+                 current_node.plan_rows = cur_plan['Plan Rows']
 
-            # if "Scan" in current_node.node_type:
-            #     #Index scan
-            #     if "Index" in current_node.node_type:
-            #         if relation_name:
-            #             current_node.set_node_name(
-            #                 relation_name + " indexed on " + index_name)
-            #     elif "Subquery" in current_node.node_type:
-            #         current_node.set_node_name(alias)
-            #     else:
-            #         current_node.set_node_name(relation_name)
             if 'Plans' in cur_plan:
                 child_plans = cur_plan['Plans']
                 for child_plan in child_plans:
@@ -314,9 +435,11 @@ class QEP(object):
 
         return head
 
+    
+
 if __name__ == "__main__":
     with open('plan 3.1.json') as json_file:
         data = json.load(json_file)
     head_node = QEP.parse_json_file(data)
     new_QEP = QEP(head_node)
-    print(new_QEP.generate_NLP_description())
+    new_QEP.plot([1,3])

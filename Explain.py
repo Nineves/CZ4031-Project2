@@ -26,8 +26,37 @@ def query_comparison(query1, query2, keyword = None):
     
     return comparison_result
 
+def get_advantage(N1, N2):
+    advantage = ""
+    if N1.node_type == "Index Scan" and N2.node_type == "Seq Scan":
+        advantage += " Index scan can be used only when search condition contains attributes with index. "
+    elif N1.node_type == "Seq Scan" and N2.node_type == "Index Scan":
+        advantage += " Index scan is often faster than sequential scan, since index access significantly reduces the number of I/O read operations."
+    elif N1.node_type == "Nested Loop" and N2.node_type == "Hash Join":
+        advantage += " Hash Join is more suitable for equi-join, where relations not sorted and no indexes exist."
+    elif N1.node_type == "Hash Join" and N2.node_type == "Nested Loop":
+        advantage += " HNested loop is useful when the left argument has a small size (fewer outer loops)."
+    elif N1.node_type == "Hash Join" and N2.node_type == "Merge Join":
+        advantage += " Tables involved in the join operation of QEP 2 can be sorted on {} effectively. And merge join is more suitable for non-equi join.".format(N2.merge_cond)
+    elif N1.node_type == "Merge Join" and N2.node_type == "Hash Join":
+        advantage += " Hash Join is more suitable for equi-join, where relations not sorted and no indexes exist."
+    elif N1.node_type == "Merge Join" and N2.node_type == "Nested Loop":
+        advantage += " Nested loop is useful when the left argument has a small size (fewer outer loops)."
+    elif N1.node_type == "Nested Loop" and N2.node_type == "Merge Join":
+        advantage += " Tables involved in the join operation of QEP 2 can be sorted on {} effectively. And merge join is more suitable for non-equi join.".format(N2.merge_cond)
+    
+    return advantage
+
 
 def plan_comparison(plan1, plan2, query1, query2):
+
+    '''
+    This function return a comparison result in a dictionary form.
+    E.g.
+    (1,2):".......", means node 1 in QEP 1 is different from node 2 in QEP 2.
+    (0,3):".....", means node 3 only exists in QEP 2.
+    
+    '''
     explanation_dict = {}
 
     plan1_relations = plan1.head_node.get_relation_names()
@@ -58,6 +87,9 @@ def plan_comparison(plan1, plan2, query1, query2):
             exp += explain_scan_diff(n1, n2, query1, query2)
             reason_new = query_comparison(query1, query2, 'WHERE')
             exp += "The reason for this change is likely that {}".format(reason_new)
+            advantage = get_advantage(n1,n2)
+            exp += advantage
+            
             explanation_dict[(n1.node_number,n2.node_number)] = exp
     
     P1_only = set()
@@ -98,6 +130,8 @@ def plan_comparison(plan1, plan2, query1, query2):
             
             exp = "The order of join operations on tables in subtrees of the node has changed from {} to {}.".format(r1, r2)
             exp += "The reason for this change is likely that {}".format(reason_new)
+            advantage = get_advantage(n1,n2)
+            exp += advantage
             explanation_dict[(n1.node_number, n2.node_number)] = exp
     
     for item in join_dict['only_1']:
@@ -137,6 +171,25 @@ def plan_comparison(plan1, plan2, query1, query2):
 
     return explanation_dict
 
+def get_diff_node_index(explanation_dict, QEP_number):
+
+    '''
+    This function returns a list evolved node indexes for a QEP.
+    '''
+
+    index_list = []
+    if QEP_number == 1:
+        for key in explanation_dict.keys():
+            if key[0] != 0:
+                index_list.append(key[0])
+    elif QEP_number == 2:
+        for key in explanation_dict.keys():
+            if key[1] != 0:
+                index_list.append(key[1])
+    return index_list
+
+
+
 def get_other_nodes_diff_exp(nodes1, nodes2, query1, query2):
     explanation_dict = {}
 
@@ -154,6 +207,7 @@ def get_other_nodes_diff_exp(nodes1, nodes2, query1, query2):
                 aggre_dict['common']['P2'].append(node2)
     aggre_dict["only_1"] = get_list_diff(aggre_nodes1,aggre_dict["common"]["P1"])
     aggre_dict["only_2"] = get_list_diff(aggre_nodes2,aggre_dict["common"]["P2"])
+    
 
     for item in aggre_dict["only_1"]:
         exp = "The aggregation operation with group key {} only exists in Plan1.".format(item.group_key)
@@ -187,8 +241,6 @@ def get_other_nodes_diff_exp(nodes1, nodes2, query1, query2):
         explanation_dict[(0, item.node_number)] = exp
     
     return explanation_dict
-
-
 
 
 def get_nodes(nodes, keyword = None):
@@ -371,7 +423,7 @@ if __name__ == "__main__":
     # FOR TESTING ONLY
     # Need to parse subquery (if there's any)
     connection = DBConnection()
-    #doExperiment1(connection)
-    #doExperiment2(connection)
+    doExperiment1(connection)
+    doExperiment2(connection)
     doExperiment3(connection)
     
