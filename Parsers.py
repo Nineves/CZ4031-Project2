@@ -58,7 +58,7 @@ class Node(object):
         return result
 
     def get_relation_names(self):
-        print("Name:{}".format(self.node_type))
+        #print("Name:{}".format(self.node_type))
         result = []
         for child in self.child_nodes:
             #print("Num of children:{}".format(len(self.child_nodes)))
@@ -88,8 +88,6 @@ class QEP(object):
         self.join_nodes = []
         self.all_nodes = self.get_all_nodes()
         self.num_of_nodes = len(self.all_nodes)
-    
-
     
     def get_all_nodes(self):
         if self.head_node is None:
@@ -152,7 +150,7 @@ class QEP(object):
         labels_name = []
         hovered_text = []
         index = []
-        self.generate_NLP_description()
+        self.generate_NL_description()
         for i in range(len(sorted_nodes)):
             index.append(str(sorted_nodes[i].node_number))
             labels_name.append(str(sorted_nodes[i].node_number) + " " + sorted_nodes[i].node_type)
@@ -250,7 +248,15 @@ class QEP(object):
             )
         return annotations
     
-    def generate_NLP_description(self):
+    def generate_NL_description(self):
+        description = ""
+        steps = self.generate_QEP_description()
+        for i in range(len(steps)):
+            description += "Step {}. {} \n".format(str(i + 1), steps[str(i + 1)])
+        return description
+        
+    
+    def generate_QEP_description(self):
         steps = {}
         visited = []
         stack = []
@@ -266,59 +272,81 @@ class QEP(object):
                     continue
                 elif "Bitmap Heap Scan" in cur_node.node_type:
                     if len(cur_node.child_node) > 0 and "Bitmap Index Scan" in cur_node.child_node[0].node_type:
-                        NLP_description += "Perform bitmap heap scan on table {} with index on condition. The scan result is named as {}.".format(cur_node.child_node[0].relation_name, cur_node.child_node[0].node.recheck_cond, "T"+str(intermediate_count))
+                        NLP_description += "Perform bitmap heap scan on table {} with index on condition. The scan result is named as {} ".format(cur_node.child_node[0].relation_name, cur_node.child_node[0].node.recheck_cond, "T"+str(intermediate_count))
                         cur_node.child_node[0].set_inter_name("T"+str(intermediate_count))
                     else:
-                        NLP_description += "Perform bitmap heap scan on table {}. The scan result is named as {}.".format(cur_node.relation_name, "T"+str(intermediate_count))
+                        NLP_description += "Perform bitmap heap scan on table {}. The scan result is named as {} ".format(cur_node.relation_name, "T"+str(intermediate_count))
                     cur_node.set_inter_name("T"+str(intermediate_count))
                     intermediate_count += 1
                     
                 elif "Scan" in cur_node.node_type:
-                    NLP_description += "Perform {} on table {}. The scan result is named as {}".format(cur_node.node_type, cur_node.relation_name, "T"+str(intermediate_count))
+                    NLP_description += "Perform {} on table {}. The scan result is named as {} ".format(cur_node.node_type, cur_node.relation_name, "T"+str(intermediate_count))
                     cur_node.set_inter_name("T"+str(intermediate_count))
                     intermediate_count += 1
                     
                 elif "Join" in cur_node.node_type:
                     NLP_description += "Perform {} on ".format(cur_node.node_type)
-                    for child_node in cur_node.child_nodes:
+                    for i, child_node in enumerate(cur_node.child_nodes):
                         if child_node.inter_name != None:
-                            NLP_description += "{}, ".format(child_node.inter_name)
+                            if i == len(cur_node.child_nodes):
+                                NLP_description += "{}. ".format(child_node.inter_name)
+                            else:
+                                NLP_description += "{}, ".format(child_node.inter_name)
                         else:
-                            NLP_description += "result after {}, ".format(child_node.node_type())
-                    NLP_description += ". The join result is named as {}".format("T"+str(intermediate_count))
+                            if i == len(cur_node.child_nodes):
+                                NLP_description += "result after {}, ".format(child_node.node_type())
+                            else:
+                                NLP_description += "result after {}. ".format(child_node.node_type())
+                    NLP_description += ". The join result is named as {} ".format("T"+str(intermediate_count))
                     cur_node.set_inter_name("T"+str(intermediate_count))
                     intermediate_count += 1
                     
 
                 elif "Nested Loop" in cur_node.node_type:
                     NLP_description += "Perform Nested Loop Join on "
-                    for child_node in cur_node.child_nodes:
+                    for child_node in enumerate(cur_node.child_nodes):
                         if child_node.inter_name != None:
-                            NLP_description += child_node.inter_name
+                            if i == len(cur_node.child_nodes):
+                                NLP_description += "{}. ".format(child_node.inter_name)
+                            else:
+                                NLP_description += "{}, ".format(child_node.inter_name)
                         else:
-                            NLP_description += "result after {}, ".format(child_node.node_type())
-                    NLP_description += ". The join result is named as {}".format("T"+str(intermediate_count))
+                            if i == len(cur_node.child_nodes):
+                                NLP_description += "result after {}, ".format(child_node.node_type())
+                            else:
+                                NLP_description += "result after {}. ".format(child_node.node_type())
+                    NLP_description += ". The join result is named as {} ".format("T"+str(intermediate_count))
                     cur_node.set_inter_name("T"+str(intermediate_count))
                     intermediate_count += 1
                     
                     
                 elif "Sort" in cur_node.node_type:
-                    NLP_description += "Perform Sort on {} with sort key {}. ".format(cur_node.child_nodes[0].inter_name, cur_node.sort_key)
-                    NLP_description += "The sorted result is named as {}. ".format("T"+str(intermediate_count))
+                    if cur_node.child_nodes[0].inter_name == None:
+                        NLP_description += "Perform Sort on result after {}. ".format(cur_node.child_nodes[0].node_type)
+                    else:
+                        NLP_description += "Perform Sort on {} with sort key {}. ".format(cur_node.child_nodes[0].inter_name, cur_node.sort_key)
+                    NLP_description += "The sorted result is named as {} ".format("T"+str(intermediate_count))
                     cur_node.set_inter_name("T"+str(intermediate_count))
                     intermediate_count += 1
                     
 
                 elif "Aggregate" in cur_node.node_type:
-                    NLP_description += "Perform Aggregate on {}".format(cur_node.child_nodes[0].inter_name)
+                    if cur_node.child_nodes[0].inter_name == None:
+                        NLP_description += "Perform Aggregate on result after {}. ".format(cur_node.child_nodes[0].node_type)
+                    else:
+                        NLP_description += "Perform Aggregate on {}. ".format(cur_node.child_nodes[0].inter_name)
                     if len(cur_node.child_nodes) == 2:
                         NLP_description += " and {}.".format(cur_node.child_nodes[1].inter_name) 
+                    NLP_description += "The aggregated result is named as {} ".format("T"+str(intermediate_count))
                     cur_node.set_inter_name("T"+str(intermediate_count))
                     intermediate_count += 1
                     
                 
                 elif "Unique" in cur_node.node_type:
-                    NLP_description += "Select unique tuple on {}".format(cur_node.child_nodes[0].inter_name)
+                    if cur_node.child_nodes[0].inter_name == None:
+                        NLP_description += "Select unique tuple on result after {}. ".format(cur_node.child_nodes[0].node_type)
+                    else:
+                        NLP_description += "Select unique tuple on {}".format(cur_node.child_nodes[0].inter_name)
                     cur_node.set_inter_name("T"+str(intermediate_count))
                     intermediate_count += 1
                    
@@ -438,8 +466,9 @@ class QEP(object):
     
 
 if __name__ == "__main__":
-    with open('plan 3.1.json') as json_file:
+    with open('Exp_qep5_2.json') as json_file:
         data = json.load(json_file)
     head_node = QEP.parse_json_file(data)
     new_QEP = QEP(head_node)
     new_QEP.plot([1,3])
+    print(new_QEP.generate_NL_description())

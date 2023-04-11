@@ -5,47 +5,91 @@ from Parsers import QEP
 from database_connection import DBConnection
 
 def query_comparison(query1, query2, keyword = None):
+    '''
+    Returns a dictionary which records the differences between two queries.
+    '''
+    values_changed = None
+    values_removed = None
+    values_added = None
     comparison_result = ""
     query_dict1 = parse_SQL(query1)
     query_dict2 = parse_SQL(query2)
     #keyword = "WHERE"
-    ddiff = deepdiff.DeepDiff(query_dict1, query_dict2)["values_changed"]
     new_key = "root['{}']".format(keyword)
-    if new_key not in ddiff:
-        return comparison_result
-    new_value = ddiff[new_key]['new_value']
-    old_value = ddiff[new_key]['old_value']
-    if keyword == "WHERE":
-        comparison_result += "the condition in WHERE clause has changed from [{}] to [{}]".format(old_value, new_value)
-    elif keyword == "FROM":
-        comparison_result += "Relations involved in P1: [{}] -> Relations involved in P2[{}]".format(old_value, new_value)
-    elif keyword == "GROUP BY":
-        comparison_result += "Group keys of P1:[{}] -> Group keys of P2:[{}]".format(old_value, new_value)
-    elif keyword == "ORDER BY":
-        comparison_result += "Sort keys of P1:[{}] -> Sort keys of P2:[{}]".format(old_value, new_value)
-    
+    ddiff = deepdiff.DeepDiff(query_dict1, query_dict2)
+
+    if "values_changed" in ddiff.keys() and new_key in ddiff["values_changed"]:
+        values_changed = ddiff["values_changed"]
+        new_value = values_changed[new_key]['new_value']
+        old_value = values_changed[new_key]['old_value']
+        if keyword == "WHERE":
+            comparison_result += "the condition in WHERE clause has changed from [{}] to [{}]. ".format(old_value, new_value)
+        elif keyword == "FROM":
+            comparison_result += "Relations involved in query 1: [{}] -> Relations involved in query 2: [{}]. ".format(old_value, new_value)
+        elif keyword == "GROUP BY":
+            comparison_result += "Group keys of query 1:[{}] -> Group keys of query 2: [{}]. ".format(old_value, new_value)
+        elif keyword == "ORDER BY":
+            comparison_result += "Sort keys of query 1:[{}] -> Sort keys of query 2: [{}]. ".format(old_value, new_value)
+
+    if "dictionary_item_removed" in ddiff.keys():
+        values_removed = ddiff["dictionary_item_removed"]
+        if new_key in values_removed:
+            comparison_result += "Clause [{}] has been removed from query 1. ".format(keyword)
+
+    if "dictionary_item_added" in ddiff.keys():
+        values_added = ddiff["dictionary_item_added"]
+        if new_key in values_added:
+            comparison_result += "Clause [{}] has been added to query 2. ".format(keyword)
     return comparison_result
 
 def get_advantage(N1, N2):
+    '''
+    Explains why a node type is better than the other type in current QEP.
+    '''
+
     advantage = ""
     if N1.node_type == "Index Scan" and N2.node_type == "Seq Scan":
         advantage += " Index scan can be used only when search condition contains attributes with index. "
     elif N1.node_type == "Seq Scan" and N2.node_type == "Index Scan":
-        advantage += " Index scan is often faster than sequential scan, since index access significantly reduces the number of I/O read operations."
+        advantage += " Index scan is often faster than sequential scan, since index access significantly reduces the number of I/O read operations. "
     elif N1.node_type == "Nested Loop" and N2.node_type == "Hash Join":
-        advantage += " Hash Join is more suitable for equi-join, where relations not sorted and no indexes exist."
+        advantage += " Hash Join is more suitable for equi-join, where relations not sorted and no indexes exist. "
     elif N1.node_type == "Hash Join" and N2.node_type == "Nested Loop":
-        advantage += " HNested loop is useful when the left argument has a small size (fewer outer loops)."
+        advantage += " HNested loop is useful when the left argument has a small size (fewer outer loops). "
     elif N1.node_type == "Hash Join" and N2.node_type == "Merge Join":
-        advantage += " Tables involved in the join operation of QEP 2 can be sorted on {} effectively. And merge join is more suitable for non-equi join.".format(N2.merge_cond)
+        advantage += " Tables involved in the join operation of QEP 2 can be sorted on {} effectively. And merge join is more suitable for non-equi join. ".format(N2.merge_cond)
     elif N1.node_type == "Merge Join" and N2.node_type == "Hash Join":
-        advantage += " Hash Join is more suitable for equi-join, where relations not sorted and no indexes exist."
+        advantage += " Hash Join is more suitable for equi-join, where relations not sorted and no indexes exist. "
     elif N1.node_type == "Merge Join" and N2.node_type == "Nested Loop":
-        advantage += " Nested loop is useful when the left argument has a small size (fewer outer loops)."
+        advantage += " Nested loop is useful when the left argument has a small size (fewer outer loops). "
     elif N1.node_type == "Nested Loop" and N2.node_type == "Merge Join":
-        advantage += " Tables involved in the join operation of QEP 2 can be sorted on {} effectively. And merge join is more suitable for non-equi join.".format(N2.merge_cond)
+        advantage += " Tables involved in the join operation of QEP 2 can be sorted on {} effectively. And merge join is more suitable for non-equi join. ".format(N2.merge_cond)
     
     return advantage
+
+def diff_explanation_in_NL(query1, query2, connection):
+    FORE_WORDS = "explain (analyze, costs, verbose, buffers, format json) "
+    plan1 = connection.execute(FORE_WORDS + query1)[0][0][0]
+    plan2 = connection.execute(FORE_WORDS + query2)[0][0][0]
+
+    qep1 = QEP(QEP.parse_json_file(plan1))
+    qep2 = QEP(QEP.parse_json_file(plan2))
+
+    result = plan_comparison(qep1, qep2, query1, query2)
+
+    explanation = ""
+
+    for key in result.keys():
+        if key[0] == 0:
+            explanation += "Node {} in QEP 2 does not exist in QEP 1: {}\n".format(str(key[1]), result[key])
+        elif key[1] == 0:
+            explanation += "Node {} in QEP 1 does not exist in QEP 2: {}\n".format(str(key[0]), result[key])
+        else:
+            explanation += "Node {} in QEP 1 is different from node {} in QEP 2: {}\n".format(str(key[0]), str(key[1]), result[key])
+    if explanation == "":
+        explanation += "No major difference has been found between QEP 1 and QEP 2. "
+
+    return explanation
 
 
 def plan_comparison(plan1, plan2, query1, query2):
@@ -86,7 +130,7 @@ def plan_comparison(plan1, plan2, query1, query2):
             exp = ""
             exp += explain_scan_diff(n1, n2, query1, query2)
             reason_new = query_comparison(query1, query2, 'WHERE')
-            exp += "The reason for this change is likely that {}".format(reason_new)
+            exp += "The reason for this change is likely that {} ".format(reason_new)
             advantage = get_advantage(n1,n2)
             exp += advantage
             
@@ -96,15 +140,15 @@ def plan_comparison(plan1, plan2, query1, query2):
     P2_only = set()
 
     for item in scan_dict['only_1']:
-        exp = "The scan operation {} on table [{}] only exist in Plan1.".format(item.node_type, item.relation_name)
-        exp += "The reason for the change can be that the tables involved in two plans are different."
+        exp = "The scan operation {} on table [{}] only exist in Plan1. ".format(item.node_type, item.relation_name)
+        exp += "The reason for the change can be that the tables involved in two plans are different. "
         exp += query_comparison(query1, query2, "FROM")
         explanation_dict[(item.node_number, 0)] = exp
 
     for item in scan_dict['only_2']:
         P2_only.add(item.relation_name)
-        exp = "The scan operation {} on table [{}] only exist in Plan1.".format(item.node_type, item.relation_name)
-        exp += "The reason for the change can be that the tables involved in two plans are different."
+        exp = "The scan operation {} on table [{}] only exist in Plan1. ".format(item.node_type, item.relation_name)
+        exp += "The reason for the change can be that the tables involved in two plans are different. "
         exp += query_comparison(query1, query2, "FROM")
         explanation_dict[(0, item.node_number)] = exp
 
@@ -123,13 +167,13 @@ def plan_comparison(plan1, plan2, query1, query2):
             exp = ""
             exp += explain_join_diff(n1, n2, query1, query2)
             reason_new = query_comparison(query1, query2, 'WHERE')
-            exp += "The reason for this change is likely that {}".format(reason_new)
+            exp += "The reason for this change is likely that {} ".format(reason_new)
             explanation_dict[(n1.node_number, n2.node_number)] = exp
         elif n1.node_type == n2.node_type and relations_1 != relations_2:
             reason_new = query_comparison(query1, query2, 'WHERE')
             
-            exp = "The order of join operations on tables in subtrees of the node has changed from {} to {}.".format(r1, r2)
-            exp += "The reason for this change is likely that {}".format(reason_new)
+            exp = "The order of join operations on tables in subtrees of the node has changed from {} to {}. ".format(r1, r2)
+            exp += "The reason for this change is likely that {} ".format(reason_new)
             advantage = get_advantage(n1,n2)
             exp += advantage
             explanation_dict[(n1.node_number, n2.node_number)] = exp
@@ -141,13 +185,13 @@ def plan_comparison(plan1, plan2, query1, query2):
             if r not in plan2_relations:
                 isDiffTable = True
                 exp = "The join operation which involves relations {} only appears in Plan1 as table {} is not used in Query2. ".format(involved_relations,r)
-                exp += "The change is indicated in FROM clause: {}".format(query_comparison(query1, query2, 'FROM'))
+                exp += "The change is indicated in FROM clause: {} ".format(query_comparison(query1, query2, 'FROM'))
                 explanation_dict[(item.node_number, 0)] = exp
         if isDiffTable == False:
             reason_new = query_comparison(query1, query2, 'WHERE')
-            exp = "The join operation which involves relation {} only appears in Plan1".format(involved_relations)
-            exp += "The reason for this change is likely that {}".format(reason_new)
-            exp += "One or some of the relations in [{}] might be joined with other relations first as it is more efficient.".format(involved_relations)
+            exp = "The join operation which involves relation {} only appears in Plan1. ".format(involved_relations)
+            exp += "The reason for this change is likely that {} ".format(reason_new)
+            exp += "One or some of the relations in [{}] might be joined with other relations first as it is more efficient. ".format(involved_relations)
             explanation_dict[(item.node_number, 0)] = exp
 
     for item in join_dict['only_2']:
@@ -156,13 +200,14 @@ def plan_comparison(plan1, plan2, query1, query2):
         for r in involved_relations:
             if r not in plan1_relations:
                 exp = "The join operation which involves relation {} only appears in Plan2 as table {} is not used in Query1. ".format(r,r)
-                exp += "The change is indicated in FROM clause: {}".format(query_comparison(query1, query2, 'FROM'))
+                exp += "The change is indicated in FROM clause: {} ".format(query_comparison(query1, query2, 'FROM'))
                 explanation_dict[(0, item.node_number)] = exp  
+                
         if isDiffTable == False:
             reason_new = query_comparison(query1, query2, 'WHERE')
-            exp = "The join operation which involves relation {} only appears in Plan1.".format(involved_relations)
-            exp += "The reason for this change is likely that {}".format(reason_new)
-            exp += "One or some of the relations in [{}] might be joined with other relations first as it is more efficient.".format(involved_relations)  
+            exp = "The join operation which involves relation {} only appears in Plan1. ".format(involved_relations)
+            exp += "The reason for this change is likely that {} ".format(reason_new)
+            exp += "One or some of the relations in [{}] might be joined with other relations first as it is more efficient. ".format(involved_relations)  
             explanation_dict[(0, item.node_number)] = exp  
     
     # Handling other nodes' differences
@@ -210,12 +255,12 @@ def get_other_nodes_diff_exp(nodes1, nodes2, query1, query2):
     
 
     for item in aggre_dict["only_1"]:
-        exp = "The aggregation operation with group key {} only exists in Plan1.".format(item.group_key)
+        exp = "The aggregation operation with group key {} only exists in Plan1. ".format(item.group_key)
         exp += "The reason for it is that {}".format(query_comparison(query1, query2, 'GROUP BY'))
         explanation_dict[(item.node_number, 0)] = exp
 
     for item in aggre_dict["only_2"]:
-        exp = "The aggregation operation with group key {} only exists in Plan2.".format(item.group_key)
+        exp = "The aggregation operation with group key {} only exists in Plan2. ".format(item.group_key)
         exp += "The reason for it is that {}".format(query_comparison(query1, query2, 'GROUP BY'))
         explanation_dict[(0, item.node_number)] = exp
 
@@ -231,12 +276,15 @@ def get_other_nodes_diff_exp(nodes1, nodes2, query1, query2):
     sort_dict["only_2"] = get_list_diff(sort_nodes2,sort_dict["common"]["P2"])
 
     for item in sort_dict["only_1"]:
-        exp = "The sort operation with sort key {} only exists in Plan1.".format(item.sort_key)
-        exp += "The reason for it is that {}".format(query_comparison(query1, query2, 'ORDER BY'))
+        exp = "The sort operation with sort key {} only exists in Plan1. ".format(item.sort_key)
+        ans = query_comparison(query1, query2, 'ORDER BY')
+        if query_comparison(query1, query2, 'ORDER BY') == "":
+            ans = query_comparison(query1, query2, 'WHERE')
+        exp += "The reason for it is that {}".format(ans)
         explanation_dict[(item.node_number, 0)] = exp
 
     for item in sort_dict["only_2"]:
-        exp = "The sort operation with sort key {} only exists in Plan2.".format(item.sort_key)
+        exp = "The sort operation with sort key {} only exists in Plan2. ".format(item.sort_key)
         exp += "The reason for it is that {}".format(query_comparison(query1, query2, 'ORDER BY'))
         explanation_dict[(0, item.node_number)] = exp
     
@@ -324,13 +372,13 @@ def explain_scan_diff(node1, node2, query1, query2):
     explanation = ""
 
     if node1.node_type == "Seq Scan" and node2.node_type == "Index Scan":
-        explanation += "Sequential scan on table {} has evolved to Index scan.".format(node1.relation_name)
+        explanation += "Sequential scan on table {} has evolved to Index scan. ".format(node1.relation_name)
         if node1.table_filter != node2.index_cond:
-            explanation += "The reason for the change can be that selection condition has changed from {} to {}.".format(node1.table_filter, node2.index_cond)
+            explanation += "The reason for the change can be that selection condition has changed from {} to {}. ".format(node1.table_filter, node2.index_cond)
     elif node1.node_type == "Index Scan" and node2.node_type == "Seq Scan":
         explanation += "Index scan on table {} has evolved to Sequential scan.".format(node1.relation_name)
         if node1.table_filter != node2.index_cond:
-            explanation += "The reason for the change can be that selection condition has changed from {} to {}.".format(node1.index_cond, node2.table_filter)  
+            explanation += "The reason for the change can be that selection condition has changed from {} to {}. ".format(node1.index_cond, node2.table_filter)  
     
     return explanation
 
@@ -344,10 +392,10 @@ def explain_join_diff(node1, node2, query1, query2):
 
     explanation += "Join operation which involves tables {} has evloved from {} to {}. ".format(r1, node1.node_type, node2.node_type)
     if relations_1 != relations_2:
-        explanation += "And the sequence of join operations on tables has also changed from {} to {}.".format(r1, r2)
+        explanation += "And the sequence of join operations on tables has also changed from {} to {}. ".format(r1, r2)
 
     reason_new = query_comparison(query1, query2, 'WHERE')
-    explanation += "The reason for this change is likely that {}".format(reason_new)
+    explanation += "The reason for this change is likely that {} ".format(reason_new)
 
     return explanation
 
@@ -366,17 +414,14 @@ def doExperiment1(connection):
     plan1 = connection.execute(FORE_WORD + query1)[0][0][0]
     plan2 = connection.execute(FORE_WORD + query2)[0][0][0]
 
-    qep1 = QEP(QEP.parse_json_file(plan1))
-    qep2 = QEP(QEP.parse_json_file(plan2))
     with open('Exp_qep1_1.json', 'w',newline='\r\n') as f:
         json.dump(plan1, f, indent=2)
     with open('Exp_qep1_2.json', 'w',newline='\r\n') as f:
         json.dump(plan2, f, indent=2)
 
-    result = plan_comparison(qep1, qep2, query1, query2)
-    dicts = {str(key[0])+","+str(key[1]): value for key, value in result.items()}
-    with open('Explanation1.json', 'w',newline='\r\n') as f:
-        json.dump(dicts, f, indent=2)
+    result = diff_explanation_in_NL(query1, query2, connection)
+    with open('Explanation_1.txt', 'w',newline='\r\n') as f:
+        f.write(result)
 
 
 def doExperiment2(connection):
@@ -387,17 +432,14 @@ def doExperiment2(connection):
     plan1 = connection.execute(FORE_WORD + query1)[0][0][0]
     plan2 = connection.execute(FORE_WORD + query2)[0][0][0]
 
-    qep1 = QEP(QEP.parse_json_file(plan1))
-    qep2 = QEP(QEP.parse_json_file(plan2))
     with open('Exp_qep2_1.json', 'w',newline='\r\n') as f:
         json.dump(plan1, f, indent=2)
     with open('Exp_qep2_2.json', 'w',newline='\r\n') as f:
         json.dump(plan2, f, indent=2)
 
-    result = plan_comparison(qep1, qep2, query1, query2)
-    dicts = {str(key[0])+","+str(key[1]): value for key, value in result.items()}
-    with open('Explanation2.json', 'w',newline='\r\n') as f:
-        json.dump(dicts, f, indent=2)
+    result = diff_explanation_in_NL(query1, query2, connection)
+    with open('Explanation_2.txt', 'w',newline='\r\n') as f:
+        f.write(result)
 
 def doExperiment3(connection):
     FORE_WORD = "explain (analyze, costs, verbose, buffers, format json) "
@@ -407,23 +449,55 @@ def doExperiment3(connection):
     plan1 = connection.execute(FORE_WORD + query1)[0][0][0]
     plan2 = connection.execute(FORE_WORD + query2)[0][0][0]
 
-    qep1 = QEP(QEP.parse_json_file(plan1))
-    qep2 = QEP(QEP.parse_json_file(plan2))
     with open('Exp_qep3_1.json', 'w',newline='\r\n') as f:
         json.dump(plan1, f, indent=2)
     with open('Exp_qep3_2.json', 'w',newline='\r\n') as f:
         json.dump(plan2, f, indent=2)
 
-    result = plan_comparison(qep1, qep2, query1, query2)
-    dicts = {str(key[0])+","+str(key[1]): value for key, value in result.items()}
-    with open('Explanation3.json', 'w',newline='\r\n') as f:
-        json.dump(dicts, f, indent=2)
+    result = diff_explanation_in_NL(query1, query2, connection)
+    with open('Explanation_3.txt', 'w',newline='\r\n') as f:
+        f.write(result)
+
+def doExperiment4(connection):
+    query1 = "select customer.c_custkey, customer.c_name, nation_a.n_name from customer, (select n_nationkey, n_name from nation where n_nationkey >= 10) as nation_a where customer.c_nationkey = nation_a.n_nationkey and customer.c_acctbal >= 1000 order by customer.c_custkey desc;"
+    query2 = "select customer_a.c_custkey, customer_a.c_name, nation.n_name from (select c_name, c_custkey, c_nationkey from customer where customer.c_custkey <= 750) as customer_a, nation where customer_a.c_nationkey = nation.n_nationkey and nation.n_nationkey >= 10 order by customer_a.c_custkey desc;"
+    result = diff_explanation_in_NL(query1, query2, connection)
+    with open('Explanation_4.txt', 'w',newline='\r\n') as f:
+        f.write(result)
+
+def doExperiment5(connection):
+    FORE_WORD = "explain (analyze, costs, verbose, buffers, format json) "
+    query1 = "select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue, o_orderdate, o_shippriority from customer, orders, lineitem where c_mktsegment = 'BUILDING' and c_custkey = o_custkey and l_orderkey = o_orderkey and o_totalprice > 10 and l_extendedprice > 10 group by l_orderkey, o_orderdate, o_shippriority order by revenue desc, o_orderdate;"
+    query2 = "select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue, o_orderdate, o_shippriority from customer, orders, lineitem where c_mktsegment = 'BUILDING' and c_custkey = o_custkey and l_orderkey = o_orderkey and o_totalprice > 10 group by l_orderkey, o_orderdate, o_shippriority;"
+    
+    plan1 = connection.execute(FORE_WORD + query1)[0][0][0]
+    plan2 = connection.execute(FORE_WORD + query2)[0][0][0]
+
+    with open('Exp_qep5_1.json', 'w',newline='\r\n') as f:
+        json.dump(plan1, f, indent=2)
+    with open('Exp_qep5_2.json', 'w',newline='\r\n') as f:
+        json.dump(plan2, f, indent=2)
+    
+    
+    result = diff_explanation_in_NL(query1, query2, connection)
+    with open('Explanation_5.txt', 'w',newline='\r\n') as f:
+        f.write(result)
+
 
 if __name__ == "__main__":
     # FOR TESTING ONLY
     # Need to parse subquery (if there's any)
     connection = DBConnection()
-    doExperiment1(connection)
-    doExperiment2(connection)
-    doExperiment3(connection)
+    #doExperiment1(connection)
+    #doExperiment2(connection)
+    #doExperiment3(connection)
+    #doExperiment4(connection)
+    doExperiment5(connection)
+    #query1 = "select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue, o_orderdate, o_shippriority from customer, orders, lineitem where c_mktsegment = 'BUILDING' and c_custkey = o_custkey and l_orderkey = o_orderkey and o_totalprice > 10 and l_extendedprice > 10 group by l_orderkey, o_orderdate, o_shippriority order by revenue desc, o_orderdate;"
+    #r1= parse_SQL(query1)
+    #query2 = "select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue, o_orderdate, o_shippriority from customer, orders, lineitem where c_mktsegment = 'BUILDING' and c_custkey = o_custkey and l_orderkey = o_orderkey and o_totalprice > 10 group by l_orderkey, o_orderdate, o_shippriority;"
+    #r2 = parse_SQL(query2)
+    #r3 = query_comparison(query1, query2, "ORDER BY")
+
+
     
