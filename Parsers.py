@@ -4,6 +4,7 @@ from igraph import Graph
 import plotly.graph_objects as go
 
 
+
 class Node(object):
     def __init__(self, node_number, total_cost, node_type, relation_name, schema, alias, group_key, sort_key, 
                  join_type, index_name, hash_cond, table_filter, index_cond, merge_cond, recheck_cond, join_filter, 
@@ -121,7 +122,7 @@ class QEP(object):
             for child in cur_node.child_nodes:
                 nodes.put(child)
 
-    def plot(self, diff_node_indexes = []):
+    def plot(self, diff_node_indexes = [], QEP_INDEX=""):
         '''
         Pass in the indexes of evolved nodes, which will be marked as yellow in the visualization.
         '''
@@ -215,7 +216,7 @@ class QEP(object):
                     showticklabels=True,
                     )
 
-        fig.update_layout(title='Tree View of Query Plan',
+        fig.update_layout(title='Tree View of Query Plan {}'.format(QEP_INDEX),
                           annotations=self.make_annotations(
                               position, self.all_nodes, maxY),
                           font_size=12,
@@ -288,8 +289,8 @@ class QEP(object):
                     NLP_description += "Perform {} on ".format(cur_node.node_type)
                     for i, child_node in enumerate(cur_node.child_nodes):
                         if child_node.inter_name != None:
-                            if i == len(cur_node.child_nodes):
-                                NLP_description += "{}. ".format(child_node.inter_name)
+                            if i == len(cur_node.child_nodes) - 1:
+                                NLP_description += "{}".format(child_node.inter_name)
                             else:
                                 NLP_description += "{}, ".format(child_node.inter_name)
                         else:
@@ -306,8 +307,8 @@ class QEP(object):
                     NLP_description += "Perform Nested Loop Join on "
                     for child_node in enumerate(cur_node.child_nodes):
                         if child_node.inter_name != None:
-                            if i == len(cur_node.child_nodes):
-                                NLP_description += "{}. ".format(child_node.inter_name)
+                            if i == len(cur_node.child_nodes) - 1:
+                                NLP_description += "{}".format(child_node.inter_name)
                             else:
                                 NLP_description += "{}, ".format(child_node.inter_name)
                         else:

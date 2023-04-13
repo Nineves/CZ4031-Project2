@@ -2,8 +2,10 @@ import psycopg2
 import json 
 
 class DBConnection:
-    def __init__(self, host="localhost", port = 5432, database="TPC-H", user="postgres", password="cz4031"):
-        self.conn = psycopg2.connect(host=host, port=port, database=database, user=user, password=password)
+    def __init__(self, config_path = "Project2\db_config.json"):
+        with open(config_path, "r") as file:
+            self.config = json.load(file)
+        self.conn = psycopg2.connect(host=self.config["host"], port=self.config["port"], database=self.config["database"], user=self.config["user"], password=self.config["password"])
         self.cur = self.conn.cursor()
 
     def execute(self,query):

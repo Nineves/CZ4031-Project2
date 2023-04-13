@@ -4,6 +4,32 @@ import json
 from Parsers import QEP
 from database_connection import DBConnection
 
+def get_QEP_description(query, connection):
+    FORE_WORD = "explain (analyze, costs, verbose, buffers, format json) "
+    plan = connection.execute(FORE_WORD + query)[0][0][0]
+    parsed_plan = QEP.parse_json_file(plan)
+    current_QEP = QEP(parsed_plan)
+    return current_QEP.generate_NL_description()
+
+def plot_tree_graph(query1, query2, connection):
+    FORE_WORD = "explain (analyze, costs, verbose, buffers, format json) "
+    plan_1 = connection.execute(FORE_WORD + query1)[0][0][0]
+    parsed_plan_1 = QEP.parse_json_file(plan_1)
+    current_QEP_1 = QEP(parsed_plan_1)
+
+    plan_2 = connection.execute(FORE_WORD + query2)[0][0][0]
+    parsed_plan_2 = QEP.parse_json_file(plan_2)
+    current_QEP_2 = QEP(parsed_plan_2)
+
+    explanation_dict = plan_comparison(current_QEP_1, current_QEP_2, query1, query2)
+    diff_indexs_1 = get_diff_node_index(explanation_dict, 1)
+    diff_indexs_2 = get_diff_node_index(explanation_dict, 2)
+
+    current_QEP_1.plot(diff_indexs_1, "1")
+    current_QEP_2.plot(diff_indexs_2, "2")
+
+
+
 def query_comparison(query1, query2, keyword = None):
     '''
     Returns a dictionary which records the differences between two queries.
@@ -81,11 +107,11 @@ def diff_explanation_in_NL(query1, query2, connection):
 
     for key in result.keys():
         if key[0] == 0:
-            explanation += "Node {} in QEP 2 does not exist in QEP 1: {}\n".format(str(key[1]), result[key])
+            explanation += "Node {} in QEP 2 does not exist in QEP 1: {}\n\n".format(str(key[1]), result[key])
         elif key[1] == 0:
-            explanation += "Node {} in QEP 1 does not exist in QEP 2: {}\n".format(str(key[0]), result[key])
+            explanation += "Node {} in QEP 1 does not exist in QEP 2: {}\n\n".format(str(key[0]), result[key])
         else:
-            explanation += "Node {} in QEP 1 is different from node {} in QEP 2: {}\n".format(str(key[0]), str(key[1]), result[key])
+            explanation += "Node {} in QEP 1 is different from node {} in QEP 2: {}\n\n".format(str(key[0]), str(key[1]), result[key])
     if explanation == "":
         explanation += "No major difference has been found between QEP 1 and QEP 2. "
 
@@ -374,11 +400,11 @@ def explain_scan_diff(node1, node2, query1, query2):
     if node1.node_type == "Seq Scan" and node2.node_type == "Index Scan":
         explanation += "Sequential scan on table {} has evolved to Index scan. ".format(node1.relation_name)
         if node1.table_filter != node2.index_cond:
-            explanation += "The reason for the change can be that selection condition has changed from {} to {}. ".format(node1.table_filter, node2.index_cond)
+            explanation += "The selection condition has changed from {} to {}. ".format(node1.table_filter, node2.index_cond)
     elif node1.node_type == "Index Scan" and node2.node_type == "Seq Scan":
         explanation += "Index scan on table {} has evolved to Sequential scan.".format(node1.relation_name)
         if node1.table_filter != node2.index_cond:
-            explanation += "The reason for the change can be that selection condition has changed from {} to {}. ".format(node1.index_cond, node2.table_filter)  
+            explanation += "The selection condition has changed from {} to {}. ".format(node1.index_cond, node2.table_filter)  
     
     return explanation
 
