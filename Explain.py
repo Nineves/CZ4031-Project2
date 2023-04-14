@@ -364,12 +364,13 @@ def compare_nodes(node1, node2):
 
 def parse_SQL(query):
 
+    '''
+    Parse SQL query into a dictionary form.
+    '''
+
     SQL_dict = dict()
     parsed = sqlparse.parse(sqlparse.format(query, keyword_case='upper'))[0]
     tokens = parsed.tokens
-    # for t in tokens:
-    #     print(t.value)
-    # return
     updated_tokens = preprocess_Tokens(tokens)
 
     for i, token in enumerate(updated_tokens):
@@ -518,12 +519,14 @@ if __name__ == "__main__":
     #doExperiment2(connection)
     #doExperiment3(connection)
     #doExperiment4(connection)
-    doExperiment5(connection)
+    #doExperiment5(connection)
     #query1 = "select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue, o_orderdate, o_shippriority from customer, orders, lineitem where c_mktsegment = 'BUILDING' and c_custkey = o_custkey and l_orderkey = o_orderkey and o_totalprice > 10 and l_extendedprice > 10 group by l_orderkey, o_orderdate, o_shippriority order by revenue desc, o_orderdate;"
     #r1= parse_SQL(query1)
     #query2 = "select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue, o_orderdate, o_shippriority from customer, orders, lineitem where c_mktsegment = 'BUILDING' and c_custkey = o_custkey and l_orderkey = o_orderkey and o_totalprice > 10 group by l_orderkey, o_orderdate, o_shippriority;"
     #r2 = parse_SQL(query2)
     #r3 = query_comparison(query1, query2, "ORDER BY")
+    q = "explain (analyze, costs, verbose, buffers, format json) select customer.c_custkey from customer where customer.c_custkey >= 75000;"
+    print(connection.execute(q)[0][0][0])
 
 
     

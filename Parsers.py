@@ -30,12 +30,6 @@ class Node(object):
         self.recheck_cond = recheck_cond    #For bitmap scan
         self.join_filter = join_filter
         self.step = None
-        
-        """
-        E.g.
-        Update needs to consider three child tables as well as the originally-mentioned parent table. 
-        So there are four input scanning Subplans, one per table.
-        """
         self.subplan_name = subplan_name
         self.actual_rows = actual_rows
         self.actual_time = actual_time
