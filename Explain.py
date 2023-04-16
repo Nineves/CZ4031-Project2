@@ -173,6 +173,11 @@ def plan_comparison(plan1, plan2, query1, query2):
             exp = "The filter condition has changed from {} to {}. ".format(n1.table_filter, n2.table_filter)
             exp += "The reason for this change is likely that {} ".format(reason_new)
             explanation_dict[(n1.node_number, n2.node_number)] = exp
+        elif n1.index_cond != n2.index_cond:
+            reason_new = query_comparison(query1, query2, 'WHERE')
+            exp = "The index condition has changed from {} to {}. ".format(n1.index_cond, n2.index_cond)
+            exp += "The reason for this change is likely that {} ".format(reason_new)
+            explanation_dict[(n1.node_number, n2.node_number)] = exp
     
     P1_only = set()
     P2_only = set()
@@ -207,12 +212,24 @@ def plan_comparison(plan1, plan2, query1, query2):
             explanation_dict[(n1.node_number, n2.node_number)] = exp
         elif n1.node_type == n2.node_type and relations_1 != relations_2:
             reason_new = query_comparison(query1, query2, 'WHERE')
-            
             exp = "The order of join operations on tables in subtrees of the node has changed from {} to {}. ".format(r1, r2)
             exp += "The reason for this change is likely that {} ".format(reason_new)
             advantage = get_advantage(n1,n2)
             exp += advantage
             explanation_dict[(n1.node_number, n2.node_number)] = exp
+
+        elif n1.node_type == n2.node_type and n1.merge_cond != n2.merge_cond:
+            reason_new = query_comparison(query1, query2, 'WHERE')
+            exp = "The merge condition has changed from {} to {}. ".format(n1.merge_cond, n2.merge_cond)
+            exp += "The reason for this change is likely that {} ".format(reason_new)
+            explanation_dict[(n1.node_number, n2.node_number)] = exp
+            
+        elif n1.node_type == n2.node_type and n1.hash_cond != n2.hash_cond:
+            reason_new = query_comparison(query1, query2, 'WHERE')
+            exp = "The hash condition has changed from {} to {}. ".format(n1.hash_cond, n2.hash_cond)
+            exp += "The reason for this change is likely that {} ".format(reason_new)
+            explanation_dict[(n1.node_number, n2.node_number)] = exp
+        
         
     for item in join_dict['only_1']:
         isDiffTable = False
