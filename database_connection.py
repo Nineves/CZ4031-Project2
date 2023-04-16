@@ -2,6 +2,9 @@ import psycopg2
 import json 
 
 class DBConnection:
+    '''
+    Connects to local database with correct configuration.
+    '''
     def __init__(self, config_path = "Project2\db_config.json"):
         with open(config_path, "r") as file:
             self.config = json.load(file)

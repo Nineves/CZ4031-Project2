@@ -5,6 +5,9 @@ from Parsers import QEP
 from database_connection import DBConnection
 
 def get_QEP_description(query, connection):
+    '''
+    Returns natural language description of a QEP.
+    '''
     FORE_WORD = "explain (analyze, costs, verbose, buffers, format json) "
     plan = connection.execute(FORE_WORD + query)[0][0][0]
     parsed_plan = QEP.parse_json_file(plan)
@@ -94,6 +97,10 @@ def get_advantage(N1, N2):
     return advantage
 
 def diff_explanation_in_NL(query1, query2, connection):
+    '''
+    Returns differences between two QEPs and explanation for the differences in natural languages.
+    '''
+
     FORE_WORDS = "explain (analyze, costs, verbose, buffers, format json) "
     plan1 = connection.execute(FORE_WORDS + query1)[0][0][0]
     plan2 = connection.execute(FORE_WORDS + query2)[0][0][0]
@@ -150,7 +157,7 @@ def plan_comparison(plan1, plan2, query1, query2):
     #Handling scan node comparisons
     for i in range(len(scan_dict['common']['P1'])):
         n1 = scan_dict['common']['P1'][i]
-        n2 = scan_dict['common']['P2'][i]
+        n2 = scan_dict['common']['P2'][i] 
 
         if n1.node_type != n2.node_type:
             exp = ""
@@ -161,6 +168,11 @@ def plan_comparison(plan1, plan2, query1, query2):
             exp += advantage
             
             explanation_dict[(n1.node_number,n2.node_number)] = exp
+        elif n1.table_filter !=n2.table_filter:
+            reason_new = query_comparison(query1, query2, 'WHERE')
+            exp = "The filter condition has changed from {} to {}. ".format(n1.table_filter, n2.table_filter)
+            exp += "The reason for this change is likely that {} ".format(reason_new)
+            explanation_dict[(n1.node_number, n2.node_number)] = exp
     
     P1_only = set()
     P2_only = set()
@@ -192,8 +204,6 @@ def plan_comparison(plan1, plan2, query1, query2):
         if n1.node_type != n2.node_type:
             exp = ""
             exp += explain_join_diff(n1, n2, query1, query2)
-            reason_new = query_comparison(query1, query2, 'WHERE')
-            exp += "The reason for this change is likely that {} ".format(reason_new)
             explanation_dict[(n1.node_number, n2.node_number)] = exp
         elif n1.node_type == n2.node_type and relations_1 != relations_2:
             reason_new = query_comparison(query1, query2, 'WHERE')
@@ -203,7 +213,7 @@ def plan_comparison(plan1, plan2, query1, query2):
             advantage = get_advantage(n1,n2)
             exp += advantage
             explanation_dict[(n1.node_number, n2.node_number)] = exp
-    
+        
     for item in join_dict['only_1']:
         isDiffTable = False
         involved_relations = item.get_relation_names()
@@ -270,6 +280,8 @@ def get_other_nodes_diff_exp(nodes1, nodes2, query1, query2):
     sort_nodes1 = get_nodes(nodes1, "Sort")
     sort_nodes2 = get_nodes(nodes2, "Sort")
 
+    
+    #Handling aggregate node comparisons
     aggre_dict={'only_1':[], 'common':{'P1':[], 'P2':[]}, 'only_2':[]}
     for node1 in aggre_nodes1:
         for node2 in aggre_nodes2:
@@ -282,15 +294,22 @@ def get_other_nodes_diff_exp(nodes1, nodes2, query1, query2):
 
     for item in aggre_dict["only_1"]:
         exp = "The aggregation operation with group key {} only exists in Plan1. ".format(item.group_key)
-        exp += "The reason for it is that {}".format(query_comparison(query1, query2, 'GROUP BY'))
+        if query_comparison(query1, query2, 'GROUP BY') != "":
+            exp += "The reason for it is that {}".format(query_comparison(query1, query2, 'GROUP BY'))
+        else:
+            exp += "The reason for it is that clause GROUP BY {} only exists in query 1.\n".format(item.group_key)
         explanation_dict[(item.node_number, 0)] = exp
 
     for item in aggre_dict["only_2"]:
         exp = "The aggregation operation with group key {} only exists in Plan2. ".format(item.group_key)
-        exp += "The reason for it is that {}".format(query_comparison(query1, query2, 'GROUP BY'))
+
+        if query_comparison(query1, query2, 'GROUP BY') != "":
+            exp += "The reason for it is that {}".format(query_comparison(query1, query2, 'GROUP BY'))
+        else:
+            exp += "The reason for it is that clause GROUP BY {} only exists in query 2.\n".format(item.group_key)
         explanation_dict[(0, item.node_number)] = exp
 
-
+    #Handling sort node comparisons
     sort_dict={'only_1':[], 'common':{'P1':[], 'P2':[]}, 'only_2':[]}
     for node1 in sort_nodes1:
         for node2 in sort_nodes2:
@@ -311,13 +330,19 @@ def get_other_nodes_diff_exp(nodes1, nodes2, query1, query2):
 
     for item in sort_dict["only_2"]:
         exp = "The sort operation with sort key {} only exists in Plan2. ".format(item.sort_key)
-        exp += "The reason for it is that {}".format(query_comparison(query1, query2, 'ORDER BY'))
+        ans = query_comparison(query1, query2, 'ORDER BY')
+        if query_comparison(query1, query2, 'ORDER BY') == "":
+            ans = query_comparison(query1, query2, 'WHERE')
+        exp += "The reason for it is that {}".format(ans)
         explanation_dict[(0, item.node_number)] = exp
     
     return explanation_dict
 
 
 def get_nodes(nodes, keyword = None):
+    '''
+    Returns a list of nodes of certain node type (specified by keyword).
+    '''
     result = []
     if keyword == None:
         return nodes
@@ -346,8 +371,10 @@ def get_nodes_diff(nodes1, nodes2):
     return scan_dict
 
 
-
 def compare_nodes(node1, node2):
+    '''
+    Returns True if the two nodes are deemed to be put in the 'common' sub dictionary.
+    '''
     result = False
     if 'Scan' in node1.node_type:
         if node1.relation_name == node2.relation_name:
@@ -356,6 +383,12 @@ def compare_nodes(node1, node2):
         if set(node1.get_relation_names()) == set(node2.get_relation_names()):
             result = True
     elif 'Join' in node1.node_type or 'Nested Loop' in node2.node_type:
+        if set(node1.get_relation_names()) == set(node2.get_relation_names()):
+            result = True
+    elif 'Sort' in node1.node_type:
+        if set(node1.get_relation_names()) == set(node2.get_relation_names()):
+            result = True
+    elif 'Aggregate' in node1.node_type:
         if set(node1.get_relation_names()) == set(node2.get_relation_names()):
             result = True
     
@@ -512,7 +545,7 @@ def doExperiment5(connection):
 
 
 if __name__ == "__main__":
-    # FOR TESTING ONLY
+    ########################################## FOR TESTING ONLY################################################
     # Need to parse subquery (if there's any)
     connection = DBConnection()
     #doExperiment1(connection)
@@ -525,8 +558,8 @@ if __name__ == "__main__":
     #query2 = "select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue, o_orderdate, o_shippriority from customer, orders, lineitem where c_mktsegment = 'BUILDING' and c_custkey = o_custkey and l_orderkey = o_orderkey and o_totalprice > 10 group by l_orderkey, o_orderdate, o_shippriority;"
     #r2 = parse_SQL(query2)
     #r3 = query_comparison(query1, query2, "ORDER BY")
-    q = "explain (analyze, costs, verbose, buffers, format json) select customer.c_custkey from customer where customer.c_custkey >= 75000;"
-    print(connection.execute(q)[0][0][0])
+    #q = "explain (analyze, costs, verbose, buffers, format json) select customer.c_custkey from customer where customer.c_custkey >= 75000;"
+    #print(connection.execute(q)[0][0][0])
 
 
     

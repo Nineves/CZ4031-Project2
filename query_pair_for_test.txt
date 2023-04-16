@@ -1,19 +1,19 @@
 Test query pairs
 Pair1
-1 select orders.o_orderkey, orders.orderdate, customer.custkey, customer.name from customer, orders where customer.custkey = orders.custkey and orders.orderkey >= 40000 and customer.custkey >= 50000;
-2 select orders.orderkey, orders.orderdate, customer.custkey, customer.name from customer, orders where customer.custkey = orders.custkey and orders.orderdate >= '1996-01-01' and customer.nationkey >= 10;
+1 select orders.o_orderkey, orders.o_orderdate, customer.c_custkey, customer.c_name from customer, orders where customer.c_custkey = orders.o_custkey and orders.o_orderkey >= 40000 and customer.c_custkey >= 50000;
+2 select orders.o_orderkey, orders.o_orderdate, customer.c_custkey, customer.c_name from customer, orders where customer.c_custkey = orders.o_custkey and orders.o_orderdate >= '1996-01-01' and customer.c_nationkey >= 10;
 
 Pair2
-1 select part.brand, part.partkey, lineitem.commitdate from part, lineitem where lineitem.partkey = part.partkey and part.partkey >= 150000 order by part.partkey desc;
-2 select part.brand, part.partkey, lineitem.commitdate from part, lineitem where lineitem.partkey = part.partkey and lineitem.commitdate > '1997-01-01' order by lineitem.commitdate desc;
+1 select part.p_brand, part.p_partkey, lineitem.l_commitdate from part, lineitem where lineitem.l_partkey = part.p_partkey and part.p_partkey >= 150000 order by part.p_partkey desc;
+2 select part.P_brand, part.p_partkey, lineitem.l_commitdate from part, lineitem where lineitem.l_partkey = part.p_partkey and lineitem.l_commitdate > '1997-01-01' order by lineitem.l_commitdate desc;
 
 Pair3
 1 select customer.custkey, customer.name, nation_a.name from customer, (select nationkey, name from nation where nationkey >= 10) as nation_a where customer.nationkey = nation_a.nationkey and customer.acctbal >= 1000 order by customer.custkey desc;
 2 select customer_a.custkey, customer_a.name, nation.name from (select name, custkey, nationkey from customer where customer.custkey <= 750) as customer_a, nation where customer_a.nationkey = nation.nationkey and nation.nationkey >= 10 order by customer_a.custkey desc;
 
 Pair4
-1 select * from (SELECT supplier.nationkey,supplier.suppkey FROM supplier WHERE 200<suppkey) AS a join (SELECT nation.nationkey, nation.regionkey FROM nation) As b on a.nationkey = b.nationkey
-2 select * from (SELECT supplier.nationkey,supplier.suppkey FROM supplier  WHERE 200>suppkey ORDER BY supplier.nationkey) AS a join (SELECT nation.nationkey, nation.regionkey FROM nation ORDER BY nation.nationkey) As b on a.nationkey = b.nationkey
+1 select * from (SELECT supplier.s_nationkey,supplier.s_suppkey FROM supplier WHERE 200<s_suppkey) AS a join (SELECT nation.n_nationkey, nation.n_regionkey FROM nation) As b on a.s_nationkey = b.n_nationkey
+2 select * from (SELECT supplier.s_nationkey,supplier.s_suppkey FROM supplier  WHERE 200>s_suppkey ORDER BY supplier.s_nationkey) AS a join (SELECT nation.n_nationkey, nation.n_regionkey FROM nation ORDER BY nation.n_nationkey) As b on a.s_nationkey = b.n_nationkey
 
 Pair5
 1 select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue, o_orderdate, o_shippriority from customer, orders, lineitem where c_mktsegment = 'BUILDING' and c_custkey = o_custkey and l_orderkey = o_orderkey and o_totalprice > 10 and l_extendedprice > 10 group by l_orderkey, o_orderdate, o_shippriority order by revenue desc, o_orderdate;
